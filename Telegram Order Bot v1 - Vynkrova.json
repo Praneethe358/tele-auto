@@ -8,11 +8,14 @@
         "width": 500,
         "color": 4
       },
-      "id": "sticky-setup",
+      "id": "2f04ad80-09b9-427a-8706-b3fbde70ba5a",
       "name": "Setup Guide",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [0, 20]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -21,40 +24,47 @@
         ],
         "additionalFields": {}
       },
-      "id": "node-tg-trigger",
+      "id": "48af5f25-2659-437e-861c-d99839c318fd",
       "name": "Telegram Trigger",
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.1,
-      "position": [560, 300],
+      "position": [
+        560,
+        288
+      ],
       "webhookId": "tg-order-bot-webhook",
       "credentials": {
         "telegramApi": {
-          "id": "tg-creds",
-          "name": "Telegram Bot"
+          "id": "ITUGwtWrV5InHJBg",
+          "name": "Telegram account"
         }
       }
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
         "jsCode": "// Extract clean data from Telegram message payload\nconst msg = $input.first().json.message;\n\nif (!msg || !msg.text) {\n  return [{ json: { valid: false, text: '', chatId: null, customerName: 'Unknown' } }];\n}\n\nconst firstName = msg.from?.first_name || '';\nconst lastName = msg.from?.last_name || '';\nconst customerName = (firstName + ' ' + lastName).trim() || 'Customer';\n\nreturn [{\n  json: {\n    valid: true,\n    chatId: msg.chat.id,\n    customerId: msg.from?.id,\n    customerName,\n    text: msg.text.trim(),\n    messageId: msg.message_id\n  }\n}];"
       },
-      "id": "node-extract",
+      "id": "94f653fb-dd52-4f3c-913d-4eb834e04daf",
       "name": "Extract Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [760, 300]
+      "position": [
+        768,
+        288
+      ]
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
         "jsCode": "const data = $input.first().json;\nconst text = data.text.toLowerCase().trim();\n\n// ── MENU (edit item names & prices here) ──────────────────────────\nconst MENU = {\n  'idli':        15,\n  'dosa':        20,\n  'masala dosa': 35,\n  'pongal':      18,\n  'vada':        12,\n  'sambar rice': 40,\n  'curd rice':   35,\n  'chapati':     15,\n  'parota':      20,\n  'fried rice':  60,\n  'meals':       80\n};\n// ─────────────────────────────────────────────────────────────────\n\n// Check for menu / help requests\nconst menuKeywords = ['menu', 'items', 'list', 'price', 'what do you have', 'available', 'hi', 'hello', 'start'];\nif (menuKeywords.some(k => text.includes(k))) {\n  return [{ json: { ...data, intent: 'menu', items: [], orderTotal: 0, MENU } }];\n}\n\n// Parse order — try longest item names first to avoid partial matches\nconst items = [];\nconst sortedItems = Object.keys(MENU).sort((a, b) => b.length - a.length);\n\nfor (const item of sortedItems) {\n  const escaped = item.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n  const patterns = [\n    new RegExp(`(\\\\d+)\\\\s*x?\\\\s*${escaped}`, 'i'),  // \"2 idli\", \"2x idli\"\n    new RegExp(`${escaped}\\\\s*x?\\\\s*(\\\\d+)`, 'i')   // \"idli 2\", \"idli x2\"\n  ];\n  for (const pattern of patterns) {\n    const match = text.match(pattern);\n    if (match) {\n      const qty = parseInt(match[1]);\n      items.push({\n        item,\n        qty,\n        unitPrice: MENU[item],\n        total: qty * MENU[item]\n      });\n      break;\n    }\n  }\n}\n\n// If no quantity given but item name found, default qty = 1\nif (items.length === 0) {\n  for (const item of sortedItems) {\n    if (text.includes(item)) {\n      items.push({ item, qty: 1, unitPrice: MENU[item], total: MENU[item] });\n    }\n  }\n}\n\nconst orderTotal = items.reduce((sum, i) => sum + i.total, 0);\nconst intent = items.length > 0 ? 'order' : 'unknown';\n\nreturn [{ json: { ...data, intent, items, orderTotal, MENU } }];"
       },
-      "id": "node-parse",
+      "id": "c88955f0-db5e-48fd-9e28-06a69a3fb435",
       "name": "Parse Intent & Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [960, 300]
+      "position": [
+        960,
+        288
+      ]
     },
     {
       "parameters": {
@@ -62,7 +72,8 @@
           "options": {
             "caseSensitive": false,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
@@ -79,16 +90,24 @@
         },
         "options": {}
       },
-      "id": "node-if-order",
+      "id": "878e2f32-9e2f-4028-ba1d-9f0f022b5043",
       "name": "Is Order?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1160, 300]
+      "position": [
+        1168,
+        288
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {},
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
           "conditions": [
             {
               "id": "cond-is-menu",
@@ -104,29 +123,34 @@
         },
         "options": {}
       },
-      "id": "node-if-menu",
+      "id": "055df385-bb26-492d-8c8c-6b111fa78bfa",
       "name": "Is Menu Query?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1160, 520]
+      "position": [
+        1168,
+        512
+      ]
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
         "jsCode": "const data = $input.first().json;\n\n// Generate a short order ID\nconst orderId = 'ORD-' + Date.now().toString().slice(-6);\n\n// IST timestamp\nconst now = new Date();\nconst ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);\nconst orderDate = ist.toISOString().replace('T', ' ').substring(0, 19);\n\n// Build a readable summary string for Sheets\nconst itemSummary = data.items\n  .map(i => `${i.item} x${i.qty} = ₹${i.total}`)\n  .join('; ');\n\n// Build a pretty message for Telegram\nconst itemLines = data.items\n  .map(i => `  • ${i.item} × ${i.qty}  —  ₹${i.total}`)\n  .join('\\n');\n\nreturn [{\n  json: {\n    ...data,\n    orderId,\n    orderDate,\n    itemSummary,\n    itemLines,\n    status: 'received'\n  }\n}];"
       },
-      "id": "node-build-order",
+      "id": "b357def0-ec72-472c-992e-450fafb6f903",
       "name": "Build Order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1380, 300]
+      "position": [
+        1392,
+        288
+      ]
     },
     {
       "parameters": {
         "operation": "append",
         "documentId": {
           "__rl": true,
-          "value": "YOUR_GOOGLE_SHEET_ID",
+          "value": "1T-RRMpWi48Pyg6ph-0YMcp_X3-vaTNIACtxEhIJ2XNs",
           "mode": "id"
         },
         "sheetName": {
@@ -137,26 +161,91 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "Order ID":     "={{ $json.orderId }}",
-            "Date":         "={{ $json.orderDate }}",
-            "Customer":     "={{ $json.customerName }}",
-            "Chat ID":      "={{ $json.chatId }}",
-            "Items":        "={{ $json.itemSummary }}",
-            "Total":        "={{ $json.orderTotal }}",
-            "Status":       "=received"
-          }
+            "order_id": "={{$json.orderId}}",
+            "timestamp": "={{$now}}",
+            "chat_id": "={{$json.chatId}}",
+            "items": "={{$json.items}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "username",
+              "displayName": "username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "items",
+              "displayName": "items",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "total",
+              "displayName": "total",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {}
       },
-      "id": "node-sheets-log",
+      "id": "408b2740-6e49-4ecb-97a6-30c357a3c0fe",
       "name": "Log to Google Sheets",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4,
-      "position": [1580, 300],
+      "position": [
+        1584,
+        288
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "google-sheets-creds",
-          "name": "Google Sheets"
+          "id": "DpIIUYhERFXpontY",
+          "name": "Google Sheets account"
         }
       }
     },
@@ -168,15 +257,19 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "node-send-confirm",
+      "id": "6e71518d-39fc-4b31-8e60-c41899c174f1",
       "name": "Send Order Confirmation",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1780, 300],
+      "position": [
+        1792,
+        288
+      ],
+      "webhookId": "1f3d0849-8f03-4798-99b4-ae65a5390b4c",
       "credentials": {
         "telegramApi": {
-          "id": "tg-creds",
-          "name": "Telegram Bot"
+          "id": "ITUGwtWrV5InHJBg",
+          "name": "Telegram account"
         }
       }
     },
@@ -188,15 +281,19 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "node-send-menu",
+      "id": "c97cb348-4eae-4903-b17e-39d2f500ec1e",
       "name": "Send Menu",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1380, 480],
+      "position": [
+        1392,
+        464
+      ],
+      "webhookId": "c79dcfef-9cd5-42ef-9a0c-6ee063c73b77",
       "credentials": {
         "telegramApi": {
-          "id": "tg-creds",
-          "name": "Telegram Bot"
+          "id": "ITUGwtWrV5InHJBg",
+          "name": "Telegram account"
         }
       }
     },
@@ -208,90 +305,140 @@
           "parse_mode": "Markdown"
         }
       },
-      "id": "node-send-help",
+      "id": "a10f07c6-dcb3-403b-93dd-37ce60bc74bf",
       "name": "Send Help Message",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1380, 620],
+      "position": [
+        1392,
+        608
+      ],
+      "webhookId": "b38adac1-0551-4aa9-bf2a-4a6460ee42a6",
       "credentials": {
         "telegramApi": {
-          "id": "tg-creds",
-          "name": "Telegram Bot"
+          "id": "ITUGwtWrV5InHJBg",
+          "name": "Telegram account"
         }
       }
     }
   ],
+  "pinData": {},
   "connections": {
     "Telegram Trigger": {
       "main": [
         [
-          { "node": "Extract Message", "type": "main", "index": 0 }
+          {
+            "node": "Extract Message",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Extract Message": {
       "main": [
         [
-          { "node": "Parse Intent & Items", "type": "main", "index": 0 }
+          {
+            "node": "Parse Intent & Items",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Parse Intent & Items": {
       "main": [
         [
-          { "node": "Is Order?", "type": "main", "index": 0 }
+          {
+            "node": "Is Order?",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Is Order?": {
       "main": [
         [
-          { "node": "Build Order", "type": "main", "index": 0 }
+          {
+            "node": "Build Order",
+            "type": "main",
+            "index": 0
+          }
         ],
         [
-          { "node": "Is Menu Query?", "type": "main", "index": 0 }
+          {
+            "node": "Is Menu Query?",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Is Menu Query?": {
       "main": [
         [
-          { "node": "Send Menu", "type": "main", "index": 0 }
+          {
+            "node": "Send Menu",
+            "type": "main",
+            "index": 0
+          }
         ],
         [
-          { "node": "Send Help Message", "type": "main", "index": 0 }
+          {
+            "node": "Send Help Message",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Build Order": {
       "main": [
         [
-          { "node": "Log to Google Sheets", "type": "main", "index": 0 }
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Log to Google Sheets": {
       "main": [
         [
-          { "node": "Send Order Confirmation", "type": "main", "index": 0 }
+          {
+            "node": "Send Order Confirmation",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "binaryMode": "separate"
   },
+  "versionId": "05abfa8e-6f47-4265-a7b9-15c236f7458f",
   "meta": {
-    "templateCredsSetupCompleted": false,
-    "instanceId": "telegram-order-bot-vynkrova-v1"
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fe169e3a0aa619bcc147f3ee08492ae4f06337bb04a7e56c104242459c32e81d"
   },
-  "id": "telegram-order-bot-v1",
+  "id": "AfZuoMAxUcac87vN",
   "tags": [
-    { "name": "vynkrova" },
-    { "name": "order-bot" }
+    {
+      "updatedAt": "2026-05-29T17:42:33.183Z",
+      "createdAt": "2026-05-29T17:42:33.183Z",
+      "id": "34VJJGsMqF1VeijL",
+      "name": "vynkrova"
+    },
+    {
+      "updatedAt": "2026-05-29T17:42:33.187Z",
+      "createdAt": "2026-05-29T17:42:33.187Z",
+      "id": "5coaJCdkhqJLn5QR",
+      "name": "order-bot"
+    }
   ]
 }
