@@ -1,0 +1,297 @@
+{
+  "name": "Telegram Order Bot v1 - Vynkrova",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 🤖 Telegram Order Bot v1\n**Stack:** Telegram → n8n → Regex → Google Sheets → Confirmation\n\n### ✅ Before Activating:\n1. Add Telegram credential (Bot Token from BotFather)\n2. Replace `YOUR_GOOGLE_SHEET_ID` in both Sheet nodes\n3. Update the MENU prices in the *Parse Intent* node if needed\n4. Create a Google Sheet named `Orders` with these columns:\n   `Order ID | Date | Customer | Chat ID | Items | Total | Status`\n\n### 🔗 Webhook Mode (optional):\nFor faster response, switch Telegram Trigger from polling to webhook:\nSettings → Activate Webhook in the trigger node.",
+        "height": 280,
+        "width": 500,
+        "color": 4
+      },
+      "id": "sticky-setup",
+      "name": "Setup Guide",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, 20]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "node-tg-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [560, 300],
+      "webhookId": "tg-order-bot-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "tg-creds",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Extract clean data from Telegram message payload\nconst msg = $input.first().json.message;\n\nif (!msg || !msg.text) {\n  return [{ json: { valid: false, text: '', chatId: null, customerName: 'Unknown' } }];\n}\n\nconst firstName = msg.from?.first_name || '';\nconst lastName = msg.from?.last_name || '';\nconst customerName = (firstName + ' ' + lastName).trim() || 'Customer';\n\nreturn [{\n  json: {\n    valid: true,\n    chatId: msg.chat.id,\n    customerId: msg.from?.id,\n    customerName,\n    text: msg.text.trim(),\n    messageId: msg.message_id\n  }\n}];"
+      },
+      "id": "node-extract",
+      "name": "Extract Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\nconst text = data.text.toLowerCase().trim();\n\n// ── MENU (edit item names & prices here) ──────────────────────────\nconst MENU = {\n  'idli':        15,\n  'dosa':        20,\n  'masala dosa': 35,\n  'pongal':      18,\n  'vada':        12,\n  'sambar rice': 40,\n  'curd rice':   35,\n  'chapati':     15,\n  'parota':      20,\n  'fried rice':  60,\n  'meals':       80\n};\n// ─────────────────────────────────────────────────────────────────\n\n// Check for menu / help requests\nconst menuKeywords = ['menu', 'items', 'list', 'price', 'what do you have', 'available', 'hi', 'hello', 'start'];\nif (menuKeywords.some(k => text.includes(k))) {\n  return [{ json: { ...data, intent: 'menu', items: [], orderTotal: 0, MENU } }];\n}\n\n// Parse order — try longest item names first to avoid partial matches\nconst items = [];\nconst sortedItems = Object.keys(MENU).sort((a, b) => b.length - a.length);\n\nfor (const item of sortedItems) {\n  const escaped = item.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n  const patterns = [\n    new RegExp(`(\\\\d+)\\\\s*x?\\\\s*${escaped}`, 'i'),  // \"2 idli\", \"2x idli\"\n    new RegExp(`${escaped}\\\\s*x?\\\\s*(\\\\d+)`, 'i')   // \"idli 2\", \"idli x2\"\n  ];\n  for (const pattern of patterns) {\n    const match = text.match(pattern);\n    if (match) {\n      const qty = parseInt(match[1]);\n      items.push({\n        item,\n        qty,\n        unitPrice: MENU[item],\n        total: qty * MENU[item]\n      });\n      break;\n    }\n  }\n}\n\n// If no quantity given but item name found, default qty = 1\nif (items.length === 0) {\n  for (const item of sortedItems) {\n    if (text.includes(item)) {\n      items.push({ item, qty: 1, unitPrice: MENU[item], total: MENU[item] });\n    }\n  }\n}\n\nconst orderTotal = items.reduce((sum, i) => sum + i.total, 0);\nconst intent = items.length > 0 ? 'order' : 'unknown';\n\nreturn [{ json: { ...data, intent, items, orderTotal, MENU } }];"
+      },
+      "id": "node-parse",
+      "name": "Parse Intent & Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-is-order",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "order",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-order",
+      "name": "Is Order?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1160, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "cond-is-menu",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "menu",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-menu",
+      "name": "Is Menu Query?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1160, 520]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\n\n// Generate a short order ID\nconst orderId = 'ORD-' + Date.now().toString().slice(-6);\n\n// IST timestamp\nconst now = new Date();\nconst ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);\nconst orderDate = ist.toISOString().replace('T', ' ').substring(0, 19);\n\n// Build a readable summary string for Sheets\nconst itemSummary = data.items\n  .map(i => `${i.item} x${i.qty} = ₹${i.total}`)\n  .join('; ');\n\n// Build a pretty message for Telegram\nconst itemLines = data.items\n  .map(i => `  • ${i.item} × ${i.qty}  —  ₹${i.total}`)\n  .join('\\n');\n\nreturn [{\n  json: {\n    ...data,\n    orderId,\n    orderDate,\n    itemSummary,\n    itemLines,\n    status: 'received'\n  }\n}];"
+      },
+      "id": "node-build-order",
+      "name": "Build Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1380, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Orders",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Order ID":     "={{ $json.orderId }}",
+            "Date":         "={{ $json.orderDate }}",
+            "Customer":     "={{ $json.customerName }}",
+            "Chat ID":      "={{ $json.chatId }}",
+            "Items":        "={{ $json.itemSummary }}",
+            "Total":        "={{ $json.orderTotal }}",
+            "Status":       "=received"
+          }
+        },
+        "options": {}
+      },
+      "id": "node-sheets-log",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1580, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-creds",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Build Order').item.json.chatId }}",
+        "text": "=✅ *Order Confirmed!*\n\nHi {{ $('Build Order').item.json.customerName }},\n\nYour order *{{ $('Build Order').item.json.orderId }}*:\n{{ $('Build Order').item.json.itemLines }}\n\n*Total: ₹{{ $('Build Order').item.json.orderTotal }}*\n\nWe've received it! 🍽️ Your food will be ready soon.",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "node-send-confirm",
+      "name": "Send Order Confirmation",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1780, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "tg-creds",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=📋 *Our Menu*\n\n🍽️ Idli           — ₹15\n🥞 Dosa            — ₹20\n🌯 Masala Dosa     — ₹35\n🍲 Pongal          — ₹18\n🧆 Vada            — ₹12\n🍛 Sambar Rice     — ₹40\n🍚 Curd Rice       — ₹35\n🫓 Chapati         — ₹15\n🥙 Parota          — ₹20\n🍳 Fried Rice      — ₹60\n🍱 Meals           — ₹80\n\n_To order, type items with quantity_\nExample: *2 idli 1 dosa*",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "node-send-menu",
+      "name": "Send Menu",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1380, 480],
+      "credentials": {
+        "telegramApi": {
+          "id": "tg-creds",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=👋 Hi! I didn't understand that.\n\nType *menu* to see our items.\nType your order like: *2 idli 1 dosa*",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "node-send-help",
+      "name": "Send Help Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1380, 620],
+      "credentials": {
+        "telegramApi": {
+          "id": "tg-creds",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          { "node": "Extract Message", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Extract Message": {
+      "main": [
+        [
+          { "node": "Parse Intent & Items", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Parse Intent & Items": {
+      "main": [
+        [
+          { "node": "Is Order?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Is Order?": {
+      "main": [
+        [
+          { "node": "Build Order", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Is Menu Query?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Is Menu Query?": {
+      "main": [
+        [
+          { "node": "Send Menu", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Send Help Message", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Build Order": {
+      "main": [
+        [
+          { "node": "Log to Google Sheets", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Log to Google Sheets": {
+      "main": [
+        [
+          { "node": "Send Order Confirmation", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "telegram-order-bot-vynkrova-v1"
+  },
+  "id": "telegram-order-bot-v1",
+  "tags": [
+    { "name": "vynkrova" },
+    { "name": "order-bot" }
+  ]
+}
